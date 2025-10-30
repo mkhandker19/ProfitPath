@@ -1,15 +1,9 @@
-// app/home/page.tsx
-
-import MarketOverview from '@/components/MarketOverview'
-import NewsFeed from '@/components/NewsFeed'
-import NavBar from '@/components/NavBar'
+import MarketOverview from '@/components/MarketOverview';
+import NewsFeed from '@/components/NewsFeed';
 
 export default function HomeAfterLogin() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-black via-gray-950 to-black text-white">
-      {/* Top Navigation (App version) */}
-      <NavBar variant="app" />
-
       {/* Main Content */}
       <div className="max-w-7xl mx-auto p-6 grid gap-6 md:grid-cols-3 pt-20">
         {/* Left: Top Performing Stocks */}
@@ -25,5 +19,5 @@ export default function HomeAfterLogin() {
         </aside>
       </div>
     </main>
-  )
+  );
 }

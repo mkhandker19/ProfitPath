@@ -1,34 +1,55 @@
-import { NextResponse } from 'next/server'
+import { NextResponse } from "next/server";
+
+const GEMINI_ENDPOINT =
+  "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent";
 
 export async function POST(req: Request) {
-  const { question } = await req.json() as { question: string }
-  if (!question) return NextResponse.json({ error: 'question required' }, { status: 400 })
+  try {
+    const body = await req.json();
 
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-  if (!OPENAI_API_KEY) return NextResponse.json({ error: 'Server missing OPENAI_API_KEY' }, { status: 500 })
+    const question =
+      body.question ||
+      (Array.isArray(body.messages)
+        ? body.messages.map((m) => m.content).join("\n")
+        : "");
 
-  // Simple REST call to Chat Completions for portability
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are an investing assistant. Be clear, brief, and avoid financial advice language.'},
-        { role: 'user', content: question }
-      ],
-      temperature: 0.3
-    })
-  })
+    if (!question)
+      return NextResponse.json({ error: "Missing input" }, { status: 400 });
 
-  if (!resp.ok) {
-    const err = await resp.text()
-    return NextResponse.json({ error: 'OpenAI error', detail: err }, { status: 500 })
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (!GEMINI_API_KEY)
+      return NextResponse.json(
+        { error: "Server missing GEMINI_API_KEY" },
+        { status: 500 }
+      );
+
+    const resp = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: question }] }],
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error("❌ Gemini API error:", err);
+      return NextResponse.json(
+        { error: "Gemini API error", detail: err },
+        { status: resp.status }
+      );
+    }
+
+    const data = await resp.json();
+    const answer =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ??
+      "No AI insight available.";
+
+    console.log("✅ Gemini AI answer:", answer.slice(0, 120));
+
+    return NextResponse.json({ answer });
+  } catch (err: any) {
+    console.error("❌ /api/ai server error:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
-  const json = await resp.json()
-  const answer = json.choices?.[0]?.message?.content ?? 'No answer.'
-  return NextResponse.json({ answer })
 }
