@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import fs from 'fs'
+import { promises as fs } from 'fs'
 import path from 'path'
 import bcrypt from 'bcryptjs'
 
@@ -7,17 +7,22 @@ export const runtime = 'nodejs'
 
 const usersPath = path.join(process.cwd(), 'data', 'users.json')
 
-function loadUsers(): any[] {
+async function loadUsers(): Promise<any[]> {
   try {
-    if (!fs.existsSync(usersPath)) return []
-    return JSON.parse(fs.readFileSync(usersPath, 'utf-8'))
-  } catch {
-    return []
+    const data = await fs.readFile(usersPath, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    console.error('Error reading users.json:', error);
+    return [];
   }
 }
-function saveUsers(users: any[]) {
-  fs.mkdirSync(path.dirname(usersPath), { recursive: true })
-  fs.writeFileSync(usersPath, JSON.stringify(users, null, 2))
+
+async function saveUsers(users: any[]) {
+  await fs.mkdir(path.dirname(usersPath), { recursive: true });
+  await fs.writeFile(usersPath, JSON.stringify(users, null, 2));
 }
 
 export async function POST(req: Request) {
@@ -28,7 +33,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'All fields are required.' }, { status: 400 })
     }
 
-    const users = loadUsers()
+    const users = await loadUsers()
     if (users.some(u => u.email?.toLowerCase() === email.toLowerCase() ||
                         u.username?.toLowerCase() === username.toLowerCase())) {
       return NextResponse.json({ message: 'User already exists.' }, { status: 400 })
@@ -41,7 +46,7 @@ export async function POST(req: Request) {
       password: hashed,
       createdAt: new Date().toISOString(),
     })
-    saveUsers(users)
+    await saveUsers(users)
 
     return NextResponse.json({ message: 'User created.' }, { status: 201 })
   } catch (e) {
