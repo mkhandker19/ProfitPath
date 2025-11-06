@@ -8,7 +8,7 @@ const config: Config = {
   theme: {
     extend: {
       backgroundImage: {
-        'dark-gradient': "url('https://i.imgur.com/83hY9oA.png')",
+        'dark-gradient': "url('/images/dark-mode-bg.png')",
       },
       backdropBlur: {
         xs: '2px',
