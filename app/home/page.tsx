@@ -3,6 +3,7 @@
 import MarketOverview from '@/components/MarketOverview'
 import NewsFeed from '@/components/NewsFeed'
 import NavBar from '@/components/NavBar'
+import DailyPicks from '@/components/DailyPicks'
 
 export default function HomeAfterLogin() {
   return (
@@ -18,10 +19,15 @@ export default function HomeAfterLogin() {
           <MarketOverview />
         </section>
 
-        {/* Right: Latest Market News */}
-        <aside className="md:col-span-1">
-          <h2 className="text-2xl font-semibold mb-4">Latest Market News</h2>
-          <NewsFeed />
+        {/* Right: Market News and AI Picks */}
+        <aside className="md:col-span-1 space-y-6">
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Latest Market News</h2>
+            <NewsFeed />
+          </div>
+          <div>
+            <DailyPicks />
+          </div>
         </aside>
       </div>
     </main>

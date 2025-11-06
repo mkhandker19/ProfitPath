@@ -1,20 +1,24 @@
 import { NextResponse } from 'next/server'
-import fs from 'fs'
+import { promises as fs } from 'fs'
 import path from 'path'
 import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
+import * as jose from 'jose'
 
 export const runtime = 'nodejs'
 
 const usersPath = path.join(process.cwd(), 'data', 'users.json')
-const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_SUPER_SECRET'
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-fallback-secret-here')
 
-function loadUsers(): any[] {
+async function loadUsers(): Promise<any[]> {
   try {
-    if (!fs.existsSync(usersPath)) return []
-    return JSON.parse(fs.readFileSync(usersPath, 'utf-8'))
-  } catch {
-    return []
+    const data = await fs.readFile(usersPath, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    console.error('Error reading users.json:', error);
+    return [];
   }
 }
 
@@ -26,23 +30,24 @@ export async function POST(req: Request) {
     }
 
     const key = username.toLowerCase()
-    const users = loadUsers()
+    const users = await loadUsers()
     const user = users.find(
       (u) => u.username?.toLowerCase() === key || u.email?.toLowerCase() === key
     )
     if (!user) return NextResponse.json({ message: 'User not found.' }, { status: 404 })
 
-    const ok = bcrypt.compareSync(password, user.password)
+    const ok = await bcrypt.compare(password, user.password)
     if (!ok) return NextResponse.json({ message: 'Invalid credentials.' }, { status: 401 })
 
-    const token = jwt.sign(
-      { sub: user.username, name: `${user.firstName} ${user.lastName}`, email: user.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    )
+    const token = await new jose.SignJWT({ name: `${user.firstName} ${user.lastName}`, email: user.email })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject(user.id)
+      .setIssuedAt()
+      .setExpirationTime('7d')
+      .sign(secret)
 
     const res = NextResponse.json({ message: 'Logged in.' })
-    res.cookies.set('auth', token, {
+    res.cookies.set('auth_token', token, {
       httpOnly: true, sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',
       path: '/', maxAge: 60 * 60 * 24 * 7,

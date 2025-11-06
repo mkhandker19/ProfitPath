@@ -7,5 +7,14 @@
     "username": "AbdulAhmed",
     "password": "$2a$10$d3srvFKYqlasXIq1eJ4xUOkqfHlFcIpQblW.XqxHEXv4paTSSZoWe",
     "createdAt": "2025-10-17T02:23:52.693Z"
+  },
+  {
+    "id": "1762410365572",
+    "firstName": "Test",
+    "lastName": "User",
+    "email": "test@test.com",
+    "username": "testuser",
+    "password": "$2a$10$AX9jCwc/gvRLJJv3y8dDYuP0H1PfEvoJFAe8Z9lXsgTD8eZetS5Ze",
+    "createdAt": "2025-11-06T06:26:05.572Z"
   }
 ]
