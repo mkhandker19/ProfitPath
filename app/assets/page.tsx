@@ -59,44 +59,51 @@ export default function AssetsPage() {
   };
 
   /* ─────────────── Fetch Stock Data ─────────────── */
-  const fetchAssetData = async (symbol: string, name: string) => {
-    const tradeRes = await fetch(
-      `https://api.polygon.io/v2/last/trade/${symbol}?apiKey=${polygonKey}`
-    );
-    const tradeData = await tradeRes.json();
+  /* Replace your fetchAssetData function with this enhanced one */
+const fetchAssetData = async (
+  symbol: string,
+  name: string,
+  customFrom?: string,
+  customTo?: string
+) => {
+  const now = new Date();
+  const past = new Date();
+  past.setDate(now.getDate() - chartRange);
 
-    const now = new Date();
-    const past = new Date();
-    past.setDate(now.getDate() - chartRange);
-    const from = past.toISOString().split("T")[0];
-    const to = now.toISOString().split("T")[0];
+  const from = customFrom || past.toISOString().split("T")[0];
+  const to = customTo || now.toISOString().split("T")[0];
 
-    const chartRes = await fetch(
-      `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${from}/${to}?adjusted=true&sort=asc&apiKey=${polygonKey}`
-    );
-    const chartData = await chartRes.json();
+  const tradeRes = await fetch(
+    `https://api.polygon.io/v2/last/trade/${symbol}?apiKey=${polygonKey}`
+  );
+  const tradeData = await tradeRes.json();
 
-    const chart = chartData.results
-      ? chartData.results.map((d: any) => ({
-          date: new Date(d.t).toLocaleDateString(),
-          price: d.c,
-        }))
-      : [];
+  const chartRes = await fetch(
+    `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${from}/${to}?adjusted=true&sort=asc&apiKey=${polygonKey}`
+  );
+  const chartData = await chartRes.json();
 
-    const aiInsight = await generateAISummary(symbol, name);
-    const aiNews = await fetchNewsSummary(symbol);
-    const aiRating = await getAIRating(symbol, name);
+  const chart = chartData.results
+    ? chartData.results.map((d: any) => ({
+        date: new Date(d.t).toLocaleDateString(),
+        price: d.c,
+      }))
+    : [];
 
-    return {
-      symbol,
-      name,
-      price: tradeData?.results?.p || "N/A",
-      chart,
-      aiInsight,
-      aiNews,
-      aiRating,
-    };
+  const aiInsight = await generateAISummary(symbol, name);
+  const aiNews = await fetchNewsSummary(symbol);
+  const aiRating = await getAIRating(symbol, name);
+
+  return {
+    symbol,
+    name,
+    price: tradeData?.results?.p || "N/A",
+    chart,
+    aiInsight,
+    aiNews,
+    aiRating,
   };
+};
 
   /* ─────────────── AI Helpers ─────────────── */
   const generateAISummary = async (symbol: string, name: string) => {
@@ -246,46 +253,90 @@ export default function AssetsPage() {
         <h1 className="text-3xl font-bold mb-6">My Assets Dashboard (AI-Enhanced)</h1>
 
         {/* Add + Controls */}
-        <div className="flex flex-wrap gap-3 mb-8 items-center">
-          <input
-            type="text"
-            placeholder="Enter stock symbol (e.g. AAPL)"
-            value={newAsset}
-            onChange={(e) => setNewAsset(e.target.value)}
-            className="px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={addAsset}
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? "Adding..." : "Add"}
-          </button>
-          <button
-            onClick={refreshAll}
-            disabled={refreshing || assets.length === 0}
-            className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
-          >
-            {refreshing ? "Refreshing..." : "Refresh All"}
-          </button>
+    
+<div className="flex flex-wrap gap-3 mb-8 items-center">
+  <input
+    type="text"
+    placeholder="Enter stock symbol (e.g. AAPL)"
+    value={newAsset}
+    onChange={(e) => setNewAsset(e.target.value)}
+    className="px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:ring-2 focus:ring-blue-500"
+  />
+  <button
+    onClick={addAsset}
+    disabled={loading}
+    className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+  >
+    {loading ? "Adding..." : "Add"}
+  </button>
+  <button
+    onClick={refreshAll}
+    disabled={refreshing || assets.length === 0}
+    className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
+  >
+    {refreshing ? "Refreshing..." : "Refresh All"}
+  </button>
 
-          {/* Chart range toggle */}
-          <div className="flex gap-2 ml-auto">
-            {[7, 30, 90].map((r) => (
-              <button
-                key={r}
-                onClick={() => setChartRange(r)}
-                className={`px-3 py-2 rounded-lg border ${
-                  chartRange === r
-                    ? "bg-blue-700 border-blue-500"
-                    : "bg-gray-800 border-gray-700"
-                }`}
-              >
-                {r}D
-              </button>
-            ))}
-          </div>
-        </div>
+  {/* Chart range toggle */}
+  <div className="flex gap-2 ml-auto items-center">
+    {[7, 30, 90].map((r) => (
+      <button
+        key={r}
+        onClick={() => setChartRange(r)}
+        className={`px-3 py-2 rounded-lg border ${
+          chartRange === r
+            ? "bg-blue-700 border-blue-500"
+            : "bg-gray-800 border-gray-700"
+        }`}
+      >
+        {r}D
+      </button>
+    ))}
+
+    {/* Custom date range */}
+    <div className="flex items-center gap-2 ml-4">
+      <input
+        type="date"
+        id="fromDate"
+        className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+      />
+      <span className="text-gray-400 text-sm">to</span>
+      <input
+        type="date"
+        id="toDate"
+        className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
+      />
+      <button
+        className="bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1 rounded"
+        onClick={async () => {
+          const from = (document.getElementById("fromDate") as HTMLInputElement)
+            ?.value;
+          const to = (document.getElementById("toDate") as HTMLInputElement)
+            ?.value;
+          if (!from || !to) {
+            alert("Please select both start and end dates.");
+            return;
+          }
+          setRefreshing(true);
+          try {
+            const updated = await Promise.all(
+              assets.map(async (a) =>
+                await fetchAssetData(a.symbol, a.name, from, to)
+              )
+            );
+            setAssets(updated);
+          } finally {
+            setRefreshing(false);
+          }
+        }}
+      >
+        Fetch Range
+      </button>
+    </div>
+  </div>
+</div>
+
+       
 
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
@@ -322,7 +373,13 @@ export default function AssetsPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={a.chart}>
                         <XAxis dataKey="date" tick={{ fill: "#ccc" }} />
-                        <YAxis tick={{ fill: "#ccc" }} />
+                        {(() => {
+  const prices = a.chart.map((d: any) => d.price);
+  const minPrice = Math.min(...prices);
+  const maxPrice = Math.max(...prices);
+  const yAxisDomain = [minPrice * 0.98, maxPrice * 1.02];
+  return <YAxis domain={yAxisDomain} tick={{ fill: "#ccc" }} />;
+})()}
                         <Tooltip
                           contentStyle={{
                             backgroundColor: "#1f1f1f",
