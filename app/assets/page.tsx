@@ -342,95 +342,92 @@ const fetchAssetData = async (
 
         {/* Watchlist */}
         {assets.length === 0 ? (
-          <p className="text-gray-400">No assets added yet.</p>
-        ) : (
-          <div className="space-y-6">
-            {assets.map((a) => (
-              <div
-                key={a.symbol}
-                className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md"
-              >
-                <div className="flex justify-between items-center mb-2">
-                  <h2 className="text-xl font-semibold">
-                    {a.name} ({a.symbol})
-                  </h2>
-                  <div className="flex items-center gap-3">
-                    <p className="text-green-400 font-medium">
-                      ${a.price?.toFixed?.(2) || a.price}
-                    </p>
-                    <button
-                      onClick={() => removeAsset(a.symbol)}
-                      className="text-red-500 hover:text-red-700 text-lg"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
+  <p className="text-gray-400">No assets added yet.</p>
+) : (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {assets.map((a) => (
+      <div
+        key={a.symbol}
+        className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md flex flex-col"
+      >
+        <div className="flex justify-between items-center mb-2">
+          <h2 className="text-xl font-semibold">
+            {a.name} ({a.symbol})
+          </h2>
+          <div className="flex items-center gap-3">
+            <p className="text-green-400 font-medium">
+              ${a.price?.toFixed?.(2) || a.price}
+            </p>
+            <button
+              onClick={() => removeAsset(a.symbol)}
+              className="text-red-500 hover:text-red-700 text-lg"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
 
-                {/* Chart */}
-                {a.chart?.length > 0 && (
-                  <div className="h-48 w-full my-3">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={a.chart}>
-                        <XAxis dataKey="date" tick={{ fill: "#ccc" }} />
-                        {(() => {
-  const prices = a.chart.map((d: any) => d.price);
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
-  const yAxisDomain = [minPrice * 0.98, maxPrice * 1.02];
-  return <YAxis domain={yAxisDomain} tick={{ fill: "#ccc" }} />;
-})()}
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: "#1f1f1f",
-                            border: "none",
-                            color: "#fff",
-                          }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="price"
-                          stroke="#3b82f6"
-                          strokeWidth={2}
-                          dot={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-
-                {/* AI Info */}
-                <p className="text-gray-300 text-sm mb-2">{a.aiInsight}</p>
-                <p className="text-gray-400 text-xs mb-1 italic">
-                  Recommendation: {a.aiRating}
-                </p>
-                <p className="text-gray-400 text-sm">
-                  <strong>AI News Summary:</strong> {a.aiNews}
-                </p>
-
-                {/* Comparison selector */}
-                <div className="mt-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={comparePair.includes(a.symbol)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          if (comparePair.length < 2)
-                            setComparePair([...comparePair, a.symbol]);
-                        } else {
-                          setComparePair(comparePair.filter((s) => s !== a.symbol));
-                        }
-                      }}
-                    />
-                    Select for comparison
-                  </label>
-                </div>
-              </div>
-            ))}
+        {/* Chart */}
+        {a.chart?.length > 0 && (
+          <div className="h-40 w-full my-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={a.chart}>
+                <XAxis dataKey="date" tick={{ fill: "#ccc", fontSize: 10 }} />
+                {(() => {
+                  const prices = a.chart.map((d: any) => d.price);
+                  const minPrice = Math.min(...prices);
+                  const maxPrice = Math.max(...prices);
+                  const yAxisDomain = [minPrice * 0.98, maxPrice * 1.02];
+                  return <YAxis domain={yAxisDomain} tick={{ fill: "#ccc" }} />;
+                })()}
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1f1f1f",
+                    border: "none",
+                    color: "#fff",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="price"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         )}
 
+        {/* AI Info */}
+        <p className="text-gray-300 text-sm mb-2">{a.aiInsight}</p>
+        <p className="text-gray-400 text-xs mb-1 italic">
+          Recommendation: {a.aiRating}
+        </p>
+        <p className="text-gray-400 text-sm mb-2">
+          <strong>AI News Summary:</strong> {a.aiNews}
+        </p>
+
+        {/* Comparison selector */}
+        <label className="flex items-center gap-2 text-sm mt-auto">
+          <input
+            type="checkbox"
+            checked={comparePair.includes(a.symbol)}
+            onChange={(e) => {
+              if (e.target.checked) {
+                if (comparePair.length < 2)
+                  setComparePair([...comparePair, a.symbol]);
+              } else {
+                setComparePair(comparePair.filter((s) => s !== a.symbol));
+              }
+            }}
+          />
+          Select for comparison
+        </label>
+      </div>
+    ))}
+  </div>
+)}
         {/* Comparison */}
         {comparePair.length === 2 && (
           <div className="mt-10 bg-gray-900 p-5 rounded-xl border border-gray-700">
