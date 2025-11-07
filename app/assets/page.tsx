@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTheme } from "@/context/ThemeContext";
+import { fetchStockData } from "@/lib/fetchStockData";
 import {
   LineChart,
   Line,
@@ -12,7 +13,7 @@ import {
 } from "recharts";
 
 export default function AssetsPage() {
-  const { theme } = useTheme(); // 👈 Add this line
+  const { theme } = useTheme();
   const [assets, setAssets] = useState<any[]>([]);
   const [newAsset, setNewAsset] = useState("");
   const [error, setError] = useState("");
@@ -22,10 +23,10 @@ export default function AssetsPage() {
   const [comparePair, setComparePair] = useState<string[]>([]);
   const [compareResult, setCompareResult] = useState("");
 
-  const polygonKey = process.env.NEXT_PUBLIC_POLYGON_API_KEY;
-  const openAiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+  const polygonKey = process.env.NEXT_PUBLIC_POLYGON_API_KEY!;
+  const openAiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY!;
 
-  /* ─────────────── Load & Save Watchlist ─────────────── */
+  /* ─────────────── Load & Save ─────────────── */
   useEffect(() => {
     const saved = localStorage.getItem("watchlist");
     if (saved) setAssets(JSON.parse(saved));
@@ -40,69 +41,35 @@ export default function AssetsPage() {
     if (!newAsset.trim()) return;
     setError("");
     setLoading(true);
+
     const symbol = newAsset.toUpperCase();
 
     try {
-      const ref = await fetch(
-        `https://api.polygon.io/v3/reference/tickers/${symbol}?apiKey=${polygonKey}`
-      );
-      if (!ref.ok) throw new Error("Invalid ticker symbol");
-      const refData = await ref.json();
+      const data = await fetchStockData(symbol, chartRange, polygonKey);
+      if (!data) throw new Error("Failed to fetch data.");
 
-      const newEntry = await fetchAssetData(symbol, refData.results.name);
+      const aiInsight = await generateAISummary(symbol, data.name);
+      const aiRating = await getAIRating(symbol, data.name);
+      const aiNewsSummary =
+        data.news?.length > 0 ? await summarizeNews(data.news) : "No recent news.";
+
+      const newEntry = {
+        symbol,
+        name: data.name,
+        price: data.price,
+        chart: data.chart,
+        aiInsight,
+        aiRating,
+        aiNews: aiNewsSummary,
+      };
+
       setAssets((prev) => [...prev, newEntry]);
       setNewAsset("");
-    } catch {
+    } catch (err) {
       setError("Invalid or unknown stock symbol.");
     } finally {
       setLoading(false);
     }
-  };
-
-  /* ─────────────── Fetch Stock Data ─────────────── */
-  const fetchAssetData = async (
-    symbol: string,
-    name: string,
-    customFrom?: string,
-    customTo?: string
-  ) => {
-    const now = new Date();
-    const past = new Date();
-    past.setDate(now.getDate() - chartRange);
-
-    const from = customFrom || past.toISOString().split("T")[0];
-    const to = customTo || now.toISOString().split("T")[0];
-
-    const tradeRes = await fetch(
-      `https://api.polygon.io/v2/last/trade/${symbol}?apiKey=${polygonKey}`
-    );
-    const tradeData = await tradeRes.json();
-
-    const chartRes = await fetch(
-      `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${from}/${to}?adjusted=true&sort=asc&apiKey=${polygonKey}`
-    );
-    const chartData = await chartRes.json();
-
-    const chart = chartData.results
-      ? chartData.results.map((d: any) => ({
-          date: new Date(d.t).toLocaleDateString(),
-          price: d.c,
-        }))
-      : [];
-
-    const aiInsight = await generateAISummary(symbol, name);
-    const aiNews = await fetchNewsSummary(symbol);
-    const aiRating = await getAIRating(symbol, name);
-
-    return {
-      symbol,
-      name,
-      price: tradeData?.results?.p || "N/A",
-      chart,
-      aiInsight,
-      aiNews,
-      aiRating,
-    };
   };
 
   /* ─────────────── AI Helpers ─────────────── */
@@ -170,39 +137,32 @@ export default function AssetsPage() {
     }
   };
 
-  const fetchNewsSummary = async (symbol: string) => {
-    try {
-      const res = await fetch(
-        `https://api.polygon.io/v2/reference/news?ticker=${symbol}&limit=5&apiKey=${polygonKey}`
-      );
-      const data = await res.json();
-      if (!data.results || !openAiKey) return "No recent news.";
-      const headlines = data.results.map((n: any) => n.title).join("; ");
-      const ai = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "user",
-              content: `Summarize these news headlines for ${symbol}: ${headlines}`,
-            },
-          ],
-          max_tokens: 100,
-        }),
-      });
-      const json = await ai.json();
-      return json.choices?.[0]?.message?.content || "No summary available.";
-    } catch {
-      return "Unable to fetch news.";
-    }
+  const summarizeNews = async (newsArray: any[]) => {
+    if (!openAiKey || newsArray.length === 0) return "No news summary available.";
+    const headlines = newsArray.map((n) => n.title).join("; ");
+    const ai = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openAiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "Summarize these recent stock headlines concisely.",
+          },
+          { role: "user", content: headlines },
+        ],
+        max_tokens: 100,
+      }),
+    });
+    const json = await ai.json();
+    return json.choices?.[0]?.message?.content || "No summary available.";
   };
 
-  /* ─────────────── Compare Two Stocks ─────────────── */
+  /* ─────────────── Compare ─────────────── */
   const compareStocks = async () => {
     if (comparePair.length !== 2 || !openAiKey) return;
     const [s1, s2] = comparePair;
@@ -236,7 +196,23 @@ export default function AssetsPage() {
     setRefreshing(true);
     try {
       const updated = await Promise.all(
-        assets.map(async (a) => await fetchAssetData(a.symbol, a.name))
+        assets.map(async (a) => {
+          const data = await fetchStockData(a.symbol, chartRange, polygonKey);
+          if (!data) return a;
+          const aiInsight = await generateAISummary(a.symbol, data.name);
+          const aiRating = await getAIRating(a.symbol, data.name);
+          const aiNewsSummary =
+            data.news?.length > 0 ? await summarizeNews(data.news) : "No recent news.";
+          return {
+            symbol: a.symbol,
+            name: data.name,
+            price: data.price,
+            chart: data.chart,
+            aiInsight,
+            aiRating,
+            aiNews: aiNewsSummary,
+          };
+        })
       );
       setAssets(updated);
     } catch {
@@ -297,11 +273,9 @@ export default function AssetsPage() {
           </button>
         </div>
 
-        {error && (
-          <p className="text-red-500 mb-4 transition-colors">{error}</p>
-        )}
+        {error && <p className="text-red-500 mb-4">{error}</p>}
 
-        {/* Watchlist */}
+        {/* Assets Grid */}
         {assets.length === 0 ? (
           <p className="text-gray-400">No assets added yet.</p>
         ) : (
@@ -344,19 +318,13 @@ export default function AssetsPage() {
                             fontSize: 10,
                           }}
                         />
-                        {(() => {
-                          const prices = a.chart.map((d: any) => d.price);
-                          const minPrice = Math.min(...prices);
-                          const maxPrice = Math.max(...prices);
-                          return (
-                            <YAxis
-                              domain={[minPrice * 0.98, maxPrice * 1.02]}
-                              tick={{
-                                fill: theme === "dark" ? "#ccc" : "#333",
-                              }}
-                            />
-                          );
-                        })()}
+                        <YAxis
+                          domain={[
+                            Math.min(...a.chart.map((d: any) => d.price)) * 0.98,
+                            Math.max(...a.chart.map((d: any) => d.price)) * 1.02,
+                          ]}
+                          tick={{ fill: theme === "dark" ? "#ccc" : "#333" }}
+                        />
                         <Tooltip
                           contentStyle={{
                             backgroundColor:
@@ -377,7 +345,6 @@ export default function AssetsPage() {
                   </div>
                 )}
 
-                {/* AI Info */}
                 <p className="text-sm mb-2">{a.aiInsight}</p>
                 <p className="text-xs mb-1 italic">
                   Recommendation: {a.aiRating}
@@ -386,7 +353,6 @@ export default function AssetsPage() {
                   <strong>AI News Summary:</strong> {a.aiNews}
                 </p>
 
-                {/* Comparison selector */}
                 <label className="flex items-center gap-2 text-sm mt-auto">
                   <input
                     type="checkbox"
@@ -396,9 +362,7 @@ export default function AssetsPage() {
                         if (comparePair.length < 2)
                           setComparePair([...comparePair, a.symbol]);
                       } else {
-                        setComparePair(
-                          comparePair.filter((s) => s !== a.symbol)
-                        );
+                        setComparePair(comparePair.filter((s) => s !== a.symbol));
                       }
                     }}
                   />
@@ -418,9 +382,7 @@ export default function AssetsPage() {
                 : "bg-[#eaf5f3] border-[#cde3dd]"
             }`}
           >
-            <h3 className="text-2xl font-semibold mb-3">
-              AI Stock Comparison
-            </h3>
+            <h3 className="text-2xl font-semibold mb-3">AI Stock Comparison</h3>
             <p className="mb-4">
               Comparing: {comparePair[0]} vs {comparePair[1]}
             </p>
