@@ -7,5 +7,41 @@
     "username": "AbdulAhmed",
     "password": "$2a$10$d3srvFKYqlasXIq1eJ4xUOkqfHlFcIpQblW.XqxHEXv4paTSSZoWe",
     "createdAt": "2025-10-17T02:23:52.693Z"
+  },
+  {
+    "id": "1761792587336",
+    "firstName": "Mahin",
+    "lastName": "Khandker",
+    "email": "mahin@gmail.com",
+    "username": "mahink",
+    "password": "$2a$10$tuQbRP.mm0Oh/X.J01cXt.OeYTu.FU7r6QRYy9fyV6MkQPZG0D/Pe",
+    "createdAt": "2025-10-30T02:49:47.336Z"
+  },
+  {
+    "id": "1761793818176",
+    "firstName": "Test",
+    "lastName": "Test",
+    "email": "Test1234@gmail.com",
+    "username": "Test1234",
+    "password": "$2a$10$1bkMfnRAW4YP2etYNCjcuemoUl7kc99uOO8bOHKptpwJlhAS9OUNO",
+    "createdAt": "2025-10-30T03:10:18.176Z"
+  },
+  {
+    "id": "1761799793882",
+    "firstName": "hello",
+    "lastName": "hello",
+    "email": "hello@gmail.com",
+    "username": "hello",
+    "password": "$2a$10$SF.fnw/1ekj5LGc/fh9NA.cqcUWn1wh1DBUG7xq9T1zTOp04h/bB2",
+    "createdAt": "2025-10-30T04:49:53.882Z"
+  },
+  {
+    "id": "1761799920289",
+    "firstName": "test",
+    "lastName": "test",
+    "email": "test@gmail.com",
+    "username": "test",
+    "password": "$2a$10$8Pc3y14ho0a03ynXXhCX6OPFWxYIQD58Sv9cGDElG93n/8LH56knO",
+    "createdAt": "2025-10-30T04:52:00.289Z"
   }
 ]
