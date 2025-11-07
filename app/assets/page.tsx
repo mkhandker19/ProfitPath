@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTheme } from "@/context/ThemeContext";
 import {
   LineChart,
   Line,
@@ -11,6 +12,7 @@ import {
 } from "recharts";
 
 export default function AssetsPage() {
+  const { theme } = useTheme(); // 👈 Add this line
   const [assets, setAssets] = useState<any[]>([]);
   const [newAsset, setNewAsset] = useState("");
   const [error, setError] = useState("");
@@ -19,7 +21,6 @@ export default function AssetsPage() {
   const [chartRange, setChartRange] = useState(30);
   const [comparePair, setComparePair] = useState<string[]>([]);
   const [compareResult, setCompareResult] = useState("");
-  const [newsSummary, setNewsSummary] = useState("");
 
   const polygonKey = process.env.NEXT_PUBLIC_POLYGON_API_KEY;
   const openAiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
@@ -51,7 +52,7 @@ export default function AssetsPage() {
       const newEntry = await fetchAssetData(symbol, refData.results.name);
       setAssets((prev) => [...prev, newEntry]);
       setNewAsset("");
-    } catch (err) {
+    } catch {
       setError("Invalid or unknown stock symbol.");
     } finally {
       setLoading(false);
@@ -59,51 +60,50 @@ export default function AssetsPage() {
   };
 
   /* ─────────────── Fetch Stock Data ─────────────── */
-  /* Replace your fetchAssetData function with this enhanced one */
-const fetchAssetData = async (
-  symbol: string,
-  name: string,
-  customFrom?: string,
-  customTo?: string
-) => {
-  const now = new Date();
-  const past = new Date();
-  past.setDate(now.getDate() - chartRange);
+  const fetchAssetData = async (
+    symbol: string,
+    name: string,
+    customFrom?: string,
+    customTo?: string
+  ) => {
+    const now = new Date();
+    const past = new Date();
+    past.setDate(now.getDate() - chartRange);
 
-  const from = customFrom || past.toISOString().split("T")[0];
-  const to = customTo || now.toISOString().split("T")[0];
+    const from = customFrom || past.toISOString().split("T")[0];
+    const to = customTo || now.toISOString().split("T")[0];
 
-  const tradeRes = await fetch(
-    `https://api.polygon.io/v2/last/trade/${symbol}?apiKey=${polygonKey}`
-  );
-  const tradeData = await tradeRes.json();
+    const tradeRes = await fetch(
+      `https://api.polygon.io/v2/last/trade/${symbol}?apiKey=${polygonKey}`
+    );
+    const tradeData = await tradeRes.json();
 
-  const chartRes = await fetch(
-    `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${from}/${to}?adjusted=true&sort=asc&apiKey=${polygonKey}`
-  );
-  const chartData = await chartRes.json();
+    const chartRes = await fetch(
+      `https://api.polygon.io/v2/aggs/ticker/${symbol}/range/1/day/${from}/${to}?adjusted=true&sort=asc&apiKey=${polygonKey}`
+    );
+    const chartData = await chartRes.json();
 
-  const chart = chartData.results
-    ? chartData.results.map((d: any) => ({
-        date: new Date(d.t).toLocaleDateString(),
-        price: d.c,
-      }))
-    : [];
+    const chart = chartData.results
+      ? chartData.results.map((d: any) => ({
+          date: new Date(d.t).toLocaleDateString(),
+          price: d.c,
+        }))
+      : [];
 
-  const aiInsight = await generateAISummary(symbol, name);
-  const aiNews = await fetchNewsSummary(symbol);
-  const aiRating = await getAIRating(symbol, name);
+    const aiInsight = await generateAISummary(symbol, name);
+    const aiNews = await fetchNewsSummary(symbol);
+    const aiRating = await getAIRating(symbol, name);
 
-  return {
-    symbol,
-    name,
-    price: tradeData?.results?.p || "N/A",
-    chart,
-    aiInsight,
-    aiNews,
-    aiRating,
+    return {
+      symbol,
+      name,
+      price: tradeData?.results?.p || "N/A",
+      chart,
+      aiInsight,
+      aiNews,
+      aiRating,
+    };
   };
-};
 
   /* ─────────────── AI Helpers ─────────────── */
   const generateAISummary = async (symbol: string, name: string) => {
@@ -248,203 +248,194 @@ const fetchAssetData = async (
 
   /* ─────────────── Render ─────────────── */
   return (
-    <main className="min-h-screen bg-gradient-to-b from-black via-gray-950 to-black text-white px-8 py-20">
+    <main
+      className={`min-h-screen px-8 py-20 transition-colors duration-500 ${
+        theme === "dark"
+          ? "bg-gradient-to-b from-black via-gray-950 to-black text-white"
+          : "bg-gradient-to-b from-[#f5f7fa] via-[#c3e0dc] to-[#9ad0c2] text-gray-900"
+      }`}
+    >
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">My Assets Dashboard (AI-Enhanced)</h1>
+        <h1 className="text-3xl font-bold mb-6">
+          My Assets Dashboard (AI-Enhanced)
+        </h1>
 
         {/* Add + Controls */}
-    
-<div className="flex flex-wrap gap-3 mb-8 items-center">
-  <input
-    type="text"
-    placeholder="Enter stock symbol (e.g. AAPL)"
-    value={newAsset}
-    onChange={(e) => setNewAsset(e.target.value)}
-    className="px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:ring-2 focus:ring-blue-500"
-  />
-  <button
-    onClick={addAsset}
-    disabled={loading}
-    className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-  >
-    {loading ? "Adding..." : "Add"}
-  </button>
-  <button
-    onClick={refreshAll}
-    disabled={refreshing || assets.length === 0}
-    className="px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50"
-  >
-    {refreshing ? "Refreshing..." : "Refresh All"}
-  </button>
+        <div className="flex flex-wrap gap-3 mb-8 items-center">
+          <input
+            type="text"
+            placeholder="Enter stock symbol (e.g. AAPL)"
+            value={newAsset}
+            onChange={(e) => setNewAsset(e.target.value)}
+            className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 ${
+              theme === "dark"
+                ? "bg-gray-800 border-gray-700 text-white"
+                : "bg-white border-gray-300 text-black"
+            }`}
+          />
+          <button
+            onClick={addAsset}
+            disabled={loading}
+            className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all ${
+              theme === "dark"
+                ? "bg-blue-600 hover:bg-blue-700"
+                : "bg-blue-400 hover:bg-blue-500 text-white"
+            }`}
+          >
+            {loading ? "Adding..." : "Add"}
+          </button>
+          <button
+            onClick={refreshAll}
+            disabled={refreshing || assets.length === 0}
+            className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all ${
+              theme === "dark"
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-green-400 hover:bg-green-500 text-white"
+            }`}
+          >
+            {refreshing ? "Refreshing..." : "Refresh All"}
+          </button>
+        </div>
 
-  {/* Chart range toggle */}
-  <div className="flex gap-2 ml-auto items-center">
-    {[7, 30, 90].map((r) => (
-      <button
-        key={r}
-        onClick={() => setChartRange(r)}
-        className={`px-3 py-2 rounded-lg border ${
-          chartRange === r
-            ? "bg-blue-700 border-blue-500"
-            : "bg-gray-800 border-gray-700"
-        }`}
-      >
-        {r}D
-      </button>
-    ))}
-
-    {/* Custom date range */}
-    <div className="flex items-center gap-2 ml-4">
-      <input
-        type="date"
-        id="fromDate"
-        className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
-      />
-      <span className="text-gray-400 text-sm">to</span>
-      <input
-        type="date"
-        id="toDate"
-        className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm"
-      />
-      <button
-        className="bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1 rounded"
-        onClick={async () => {
-          const from = (document.getElementById("fromDate") as HTMLInputElement)
-            ?.value;
-          const to = (document.getElementById("toDate") as HTMLInputElement)
-            ?.value;
-          if (!from || !to) {
-            alert("Please select both start and end dates.");
-            return;
-          }
-          setRefreshing(true);
-          try {
-            const updated = await Promise.all(
-              assets.map(async (a) =>
-                await fetchAssetData(a.symbol, a.name, from, to)
-              )
-            );
-            setAssets(updated);
-          } finally {
-            setRefreshing(false);
-          }
-        }}
-      >
-        Fetch Range
-      </button>
-    </div>
-  </div>
-</div>
-
-       
-
-        {error && <p className="text-red-500 mb-4">{error}</p>}
+        {error && (
+          <p className="text-red-500 mb-4 transition-colors">{error}</p>
+        )}
 
         {/* Watchlist */}
         {assets.length === 0 ? (
-  <p className="text-gray-400">No assets added yet.</p>
-) : (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-    {assets.map((a) => (
-      <div
-        key={a.symbol}
-        className="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-md flex flex-col"
-      >
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-xl font-semibold">
-            {a.name} ({a.symbol})
-          </h2>
-          <div className="flex items-center gap-3">
-            <p className="text-green-400 font-medium">
-              ${a.price?.toFixed?.(2) || a.price}
-            </p>
-            <button
-              onClick={() => removeAsset(a.symbol)}
-              className="text-red-500 hover:text-red-700 text-lg"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
+          <p className="text-gray-400">No assets added yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {assets.map((a) => (
+              <div
+                key={a.symbol}
+                className={`p-5 rounded-xl border shadow-md flex flex-col transition-colors ${
+                  theme === "dark"
+                    ? "bg-gray-800 border-gray-700"
+                    : "bg-[#eaf5f3] border-[#cde3dd]"
+                }`}
+              >
+                <div className="flex justify-between items-center mb-2">
+                  <h2 className="text-xl font-semibold">
+                    {a.name} ({a.symbol})
+                  </h2>
+                  <div className="flex items-center gap-3">
+                    <p className="text-green-500 font-medium">
+                      ${a.price?.toFixed?.(2) || a.price}
+                    </p>
+                    <button
+                      onClick={() => removeAsset(a.symbol)}
+                      className="text-red-500 hover:text-red-700 text-lg"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
 
-        {/* Chart */}
-        {a.chart?.length > 0 && (
-          <div className="h-40 w-full my-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={a.chart}>
-                <XAxis dataKey="date" tick={{ fill: "#ccc", fontSize: 10 }} />
-                {(() => {
-                  const prices = a.chart.map((d: any) => d.price);
-                  const minPrice = Math.min(...prices);
-                  const maxPrice = Math.max(...prices);
-                  const yAxisDomain = [minPrice * 0.98, maxPrice * 1.02];
-                  return <YAxis domain={yAxisDomain} tick={{ fill: "#ccc" }} />;
-                })()}
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#1f1f1f",
-                    border: "none",
-                    color: "#fff",
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="price"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                {/* Chart */}
+                {a.chart?.length > 0 && (
+                  <div className="h-40 w-full my-3">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={a.chart}>
+                        <XAxis
+                          dataKey="date"
+                          tick={{
+                            fill: theme === "dark" ? "#ccc" : "#333",
+                            fontSize: 10,
+                          }}
+                        />
+                        {(() => {
+                          const prices = a.chart.map((d: any) => d.price);
+                          const minPrice = Math.min(...prices);
+                          const maxPrice = Math.max(...prices);
+                          return (
+                            <YAxis
+                              domain={[minPrice * 0.98, maxPrice * 1.02]}
+                              tick={{
+                                fill: theme === "dark" ? "#ccc" : "#333",
+                              }}
+                            />
+                          );
+                        })()}
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor:
+                              theme === "dark" ? "#1f1f1f" : "#eaf5f3",
+                            border: "none",
+                            color: theme === "dark" ? "#fff" : "#000",
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="price"
+                          stroke={theme === "dark" ? "#3b82f6" : "#2563eb"}
+                          strokeWidth={2}
+                          dot={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+
+                {/* AI Info */}
+                <p className="text-sm mb-2">{a.aiInsight}</p>
+                <p className="text-xs mb-1 italic">
+                  Recommendation: {a.aiRating}
+                </p>
+                <p className="text-sm mb-2">
+                  <strong>AI News Summary:</strong> {a.aiNews}
+                </p>
+
+                {/* Comparison selector */}
+                <label className="flex items-center gap-2 text-sm mt-auto">
+                  <input
+                    type="checkbox"
+                    checked={comparePair.includes(a.symbol)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        if (comparePair.length < 2)
+                          setComparePair([...comparePair, a.symbol]);
+                      } else {
+                        setComparePair(
+                          comparePair.filter((s) => s !== a.symbol)
+                        );
+                      }
+                    }}
+                  />
+                  Select for comparison
+                </label>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* AI Info */}
-        <p className="text-gray-300 text-sm mb-2">{a.aiInsight}</p>
-        <p className="text-gray-400 text-xs mb-1 italic">
-          Recommendation: {a.aiRating}
-        </p>
-        <p className="text-gray-400 text-sm mb-2">
-          <strong>AI News Summary:</strong> {a.aiNews}
-        </p>
-
-        {/* Comparison selector */}
-        <label className="flex items-center gap-2 text-sm mt-auto">
-          <input
-            type="checkbox"
-            checked={comparePair.includes(a.symbol)}
-            onChange={(e) => {
-              if (e.target.checked) {
-                if (comparePair.length < 2)
-                  setComparePair([...comparePair, a.symbol]);
-              } else {
-                setComparePair(comparePair.filter((s) => s !== a.symbol));
-              }
-            }}
-          />
-          Select for comparison
-        </label>
-      </div>
-    ))}
-  </div>
-)}
         {/* Comparison */}
         {comparePair.length === 2 && (
-          <div className="mt-10 bg-gray-900 p-5 rounded-xl border border-gray-700">
-            <h3 className="text-2xl font-semibold mb-3">AI Stock Comparison</h3>
-            <p className="text-gray-400 mb-4">
+          <div
+            className={`mt-10 p-5 rounded-xl border transition-colors ${
+              theme === "dark"
+                ? "bg-gray-900 border-gray-700"
+                : "bg-[#eaf5f3] border-[#cde3dd]"
+            }`}
+          >
+            <h3 className="text-2xl font-semibold mb-3">
+              AI Stock Comparison
+            </h3>
+            <p className="mb-4">
               Comparing: {comparePair[0]} vs {comparePair[1]}
             </p>
             <button
               onClick={compareStocks}
-              className="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition"
+              className={`px-4 py-2 rounded-lg transition-all ${
+                theme === "dark"
+                  ? "bg-blue-600 hover:bg-blue-700"
+                  : "bg-blue-400 hover:bg-blue-500 text-white"
+              }`}
             >
               Run Comparison
             </button>
             {compareResult && (
-              <p className="mt-4 text-gray-300 whitespace-pre-line">
-                {compareResult}
-              </p>
+              <p className="mt-4 whitespace-pre-line">{compareResult}</p>
             )}
           </div>
         )}
