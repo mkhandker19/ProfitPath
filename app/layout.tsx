@@ -1,19 +1,31 @@
 'use client';
 
+import { useRouter } from "next/navigation";
 import './globals.css';
 import Link from 'next/link';
 import FloatingWidget from '@/components/FloatingWidget';
 import { usePathname } from 'next/navigation';
 import { Sun, Moon } from 'lucide-react';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { useState } from "react";
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+
   const hideWidgetOn = ['/', '/login', '/register'];
   const showWidget = !hideWidgetOn.includes(pathname);
   const hideNavbar = hideWidgetOn.includes(pathname);
 
   const { theme, toggleTheme } = useTheme();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const confirmLogout = () => {
+    // clear stored data
+    localStorage.clear();
+    setShowLogoutModal(false);
+    router.push("/");
+  };
 
   return (
     <html lang="en" className={theme === 'dark' ? 'dark' : ''}>
@@ -85,6 +97,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
 
               {/* Logout */}
               <button
+                onClick={() => setShowLogoutModal(true)}
                 className={`px-4 py-2 rounded transition-all duration-300 ${
                   theme === 'dark'
                     ? 'bg-gray-700 hover:bg-gray-600 text-white'
@@ -97,9 +110,49 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
           </header>
         )}
 
+        {/* Main content */}
         <main className="transition-colors duration-500">{children}</main>
-
         {showWidget && <FloatingWidget />}
+
+        {/* ✅ Logout Confirmation Modal */}
+        {showLogoutModal && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50">
+            <div
+              className={`rounded-xl p-6 w-[90%] max-w-md shadow-xl text-center transition-all duration-300 ${
+                theme === 'dark'
+                  ? 'bg-zinc-900 text-white'
+                  : 'bg-white text-gray-900'
+              }`}
+            >
+              <h2 className="text-xl font-semibold mb-4">Confirm Logout</h2>
+              <p className="text-sm mb-6">
+                Are you sure you want to log out? You’ll be redirected to the home page.
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={confirmLogout}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                    theme === 'dark'
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-red-500 hover:bg-red-600 text-white'
+                  }`}
+                >
+                  Yes, Logout
+                </button>
+                <button
+                  onClick={() => setShowLogoutModal(false)}
+                  className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                    theme === 'dark'
+                      ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                      : 'bg-gray-300 hover:bg-gray-400 text-gray-900'
+                  }`}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </body>
     </html>
   );
