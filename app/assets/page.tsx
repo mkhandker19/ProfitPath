@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useTheme } from "@/context/ThemeContext";
-import { fetchStockData } from "@/lib/fetchStockData";
 import {
   LineChart,
   Line,
@@ -11,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { fetchStockData } from "@/lib/fetchStockData";
 
 export default function AssetsPage() {
   const { theme } = useTheme();
@@ -20,13 +20,16 @@ export default function AssetsPage() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [chartRange, setChartRange] = useState(30);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [comparePair, setComparePair] = useState<string[]>([]);
   const [compareResult, setCompareResult] = useState("");
+  const [rangeMode, setRangeMode] = useState<"preset" | "custom">("preset");
 
   const polygonKey = process.env.NEXT_PUBLIC_POLYGON_API_KEY!;
   const openAiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY!;
 
-  /* ─────────────── Load & Save ─────────────── */
+  /* ─────────────── Load & Save Watchlist ─────────────── */
   useEffect(() => {
     const saved = localStorage.getItem("watchlist");
     if (saved) setAssets(JSON.parse(saved));
@@ -36,36 +39,45 @@ export default function AssetsPage() {
     localStorage.setItem("watchlist", JSON.stringify(assets));
   }, [assets]);
 
+  // Reset range mode when all assets removed
+  useEffect(() => {
+    if (assets.length === 0) {
+      setRangeMode("preset");
+      setCustomFrom("");
+      setCustomTo("");
+    }
+  }, [assets]);
+
   /* ─────────────── Add Stock ─────────────── */
   const addAsset = async () => {
     if (!newAsset.trim()) return;
     setError("");
     setLoading(true);
-
     const symbol = newAsset.toUpperCase();
 
     try {
       const data = await fetchStockData(symbol, chartRange, polygonKey);
-      if (!data) throw new Error("Failed to fetch data.");
+      if (!data) throw new Error("Invalid ticker symbol");
 
       const aiInsight = await generateAISummary(symbol, data.name);
       const aiRating = await getAIRating(symbol, data.name);
-      const aiNewsSummary =
-        data.news?.length > 0 ? await summarizeNews(data.news) : "No recent news.";
+      const aiNews = await summarizeNews(symbol, data.news);
 
-      const newEntry = {
-        symbol,
-        name: data.name,
-        price: data.price,
-        chart: data.chart,
-        aiInsight,
-        aiRating,
-        aiNews: aiNewsSummary,
-      };
-
-      setAssets((prev) => [...prev, newEntry]);
+      setAssets((prev) => [
+        ...prev,
+        {
+          symbol,
+          name: data.name,
+          price: data.price,
+          chart: data.chart,
+          aiInsight,
+          aiRating,
+          aiNews,
+        },
+      ]);
       setNewAsset("");
     } catch (err) {
+      console.error(err);
       setError("Invalid or unknown stock symbol.");
     } finally {
       setLoading(false);
@@ -137,32 +149,35 @@ export default function AssetsPage() {
     }
   };
 
-  const summarizeNews = async (newsArray: any[]) => {
-    if (!openAiKey || newsArray.length === 0) return "No news summary available.";
-    const headlines = newsArray.map((n) => n.title).join("; ");
-    const ai = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openAiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "Summarize these recent stock headlines concisely.",
-          },
-          { role: "user", content: headlines },
-        ],
-        max_tokens: 100,
-      }),
-    });
-    const json = await ai.json();
-    return json.choices?.[0]?.message?.content || "No summary available.";
+  const summarizeNews = async (symbol: string, news: any[]) => {
+    if (!news?.length || !openAiKey) return "No recent news.";
+    const headlines = news.map((n: any) => n.title).join("; ");
+    try {
+      const ai = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: `Summarize these news headlines for ${symbol}: ${headlines}`,
+            },
+          ],
+          max_tokens: 100,
+        }),
+      });
+      const json = await ai.json();
+      return json.choices?.[0]?.message?.content || "No summary available.";
+    } catch {
+      return "Unable to fetch news.";
+    }
   };
 
-  /* ─────────────── Compare ─────────────── */
+  /* ─────────────── Compare Two Stocks ─────────────── */
   const compareStocks = async () => {
     if (comparePair.length !== 2 || !openAiKey) return;
     const [s1, s2] = comparePair;
@@ -184,7 +199,9 @@ export default function AssetsPage() {
       }),
     });
     const data = await res.json();
-    setCompareResult(data.choices?.[0]?.message?.content || "No comparison result.");
+    setCompareResult(
+      data.choices?.[0]?.message?.content || "No comparison result."
+    );
   };
 
   /* ─────────────── Actions ─────────────── */
@@ -201,8 +218,7 @@ export default function AssetsPage() {
           if (!data) return a;
           const aiInsight = await generateAISummary(a.symbol, data.name);
           const aiRating = await getAIRating(a.symbol, data.name);
-          const aiNewsSummary =
-            data.news?.length > 0 ? await summarizeNews(data.news) : "No recent news.";
+          const aiNews = await summarizeNews(a.symbol, data.news);
           return {
             symbol: a.symbol,
             name: data.name,
@@ -210,7 +226,7 @@ export default function AssetsPage() {
             chart: data.chart,
             aiInsight,
             aiRating,
-            aiNews: aiNewsSummary,
+            aiNews,
           };
         })
       );
@@ -238,28 +254,110 @@ export default function AssetsPage() {
 
         {/* Add + Controls */}
         <div className="flex flex-wrap gap-3 mb-8 items-center">
-          <input
-            type="text"
-            placeholder="Enter stock symbol (e.g. AAPL)"
-            value={newAsset}
-            onChange={(e) => setNewAsset(e.target.value)}
-            className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 ${
-              theme === "dark"
-                ? "bg-gray-800 border-gray-700 text-white"
-                : "bg-white border-gray-300 text-black"
-            }`}
-          />
-          <button
-            onClick={addAsset}
-            disabled={loading}
-            className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all ${
-              theme === "dark"
-                ? "bg-blue-600 hover:bg-blue-700"
-                : "bg-blue-400 hover:bg-blue-500 text-white"
-            }`}
-          >
-            {loading ? "Adding..." : "Add"}
-          </button>
+          {/* Stock Input + Add Button */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Enter stock symbol (e.g. AAPL)"
+              value={newAsset}
+              onChange={(e) => setNewAsset(e.target.value)}
+              className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 ${
+                theme === "dark"
+                  ? "bg-gray-800 border-gray-700 text-white"
+                  : "bg-white border-gray-300 text-black"
+              }`}
+            />
+            <button
+              onClick={addAsset}
+              disabled={loading}
+              className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all ${
+                theme === "dark"
+                  ? "bg-blue-600 hover:bg-blue-700"
+                  : "bg-blue-400 hover:bg-blue-500 text-white"
+              }`}
+            >
+              {loading ? "Adding..." : "Add"}
+            </button>
+          </div>
+
+          {/* Range Selector */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <label className="text-sm font-medium">Range Mode:</label>
+            <select
+              value={chartRange}
+              onChange={(e) => {
+                setChartRange(Number(e.target.value));
+                setRangeMode("preset");
+                setCustomFrom("");
+                setCustomTo("");
+              }}
+              disabled={rangeMode === "custom"}
+              className={`px-3 py-2 rounded-lg border ${
+                theme === "dark"
+                  ? "bg-gray-800 border-gray-700 text-white disabled:opacity-50"
+                  : "bg-white border-gray-300 text-black disabled:opacity-50"
+              }`}
+            >
+              <option value={7}>7 Days</option>
+              <option value={30}>30 Days</option>
+              <option value={90}>90 Days</option>
+            </select>
+
+            <span className="text-sm font-medium">or</span>
+
+            {/* Custom Range */}
+<div className="flex gap-2 items-center">
+  <input
+    type="date"
+    value={customFrom}
+    onChange={(e) => {
+      const val = e.target.value;
+      setCustomFrom(val);
+      if (val && customTo) setRangeMode("custom");
+      else setRangeMode("preset");
+    }}
+    className={`px-3 py-2 rounded-lg border ${
+      theme === "dark"
+        ? "bg-gray-800 border-gray-700 text-white"
+        : "bg-white border-gray-300 text-black"
+    }`}
+  />
+  <span>→</span>
+  <input
+    type="date"
+    value={customTo}
+    onChange={(e) => {
+      const val = e.target.value;
+      setCustomTo(val);
+      if (customFrom && val) setRangeMode("custom");
+      else setRangeMode("preset");
+    }}
+    className={`px-3 py-2 rounded-lg border ${
+      theme === "dark"
+        ? "bg-gray-800 border-gray-700 text-white"
+        : "bg-white border-gray-300 text-black"
+    }`}
+  />
+</div>
+
+            {/* Mode Indicator */}
+            <span
+              className={`ml-3 text-sm px-3 py-1 rounded-full ${
+                rangeMode === "custom"
+                  ? theme === "dark"
+                    ? "bg-purple-700 text-white"
+                    : "bg-purple-200 text-purple-800"
+                  : theme === "dark"
+                  ? "bg-blue-700 text-white"
+                  : "bg-blue-200 text-blue-800"
+              }`}
+            >
+              {rangeMode === "custom"
+                ? `Custom Range Active`
+                : `${chartRange}-Day Preset Active`}
+            </span>
+          </div>
+
           <button
             onClick={refreshAll}
             disabled={refreshing || assets.length === 0}
@@ -275,7 +373,7 @@ export default function AssetsPage() {
 
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
-        {/* Assets Grid */}
+        {/* Watchlist */}
         {assets.length === 0 ? (
           <p className="text-gray-400">No assets added yet.</p>
         ) : (
@@ -318,13 +416,19 @@ export default function AssetsPage() {
                             fontSize: 10,
                           }}
                         />
-                        <YAxis
-                          domain={[
-                            Math.min(...a.chart.map((d: any) => d.price)) * 0.98,
-                            Math.max(...a.chart.map((d: any) => d.price)) * 1.02,
-                          ]}
-                          tick={{ fill: theme === "dark" ? "#ccc" : "#333" }}
-                        />
+                        {(() => {
+                          const prices = a.chart.map((d: any) => d.price);
+                          const minPrice = Math.min(...prices);
+                          const maxPrice = Math.max(...prices);
+                          return (
+                            <YAxis
+                              domain={[minPrice * 0.98, maxPrice * 1.02]}
+                              tick={{
+                                fill: theme === "dark" ? "#ccc" : "#333",
+                              }}
+                            />
+                          );
+                        })()}
                         <Tooltip
                           contentStyle={{
                             backgroundColor:
@@ -345,6 +449,7 @@ export default function AssetsPage() {
                   </div>
                 )}
 
+                {/* AI Info */}
                 <p className="text-sm mb-2">{a.aiInsight}</p>
                 <p className="text-xs mb-1 italic">
                   Recommendation: {a.aiRating}
@@ -353,6 +458,7 @@ export default function AssetsPage() {
                   <strong>AI News Summary:</strong> {a.aiNews}
                 </p>
 
+                {/* Comparison selector */}
                 <label className="flex items-center gap-2 text-sm mt-auto">
                   <input
                     type="checkbox"
@@ -362,7 +468,9 @@ export default function AssetsPage() {
                         if (comparePair.length < 2)
                           setComparePair([...comparePair, a.symbol]);
                       } else {
-                        setComparePair(comparePair.filter((s) => s !== a.symbol));
+                        setComparePair(
+                          comparePair.filter((s) => s !== a.symbol)
+                        );
                       }
                     }}
                   />
@@ -382,7 +490,9 @@ export default function AssetsPage() {
                 : "bg-[#eaf5f3] border-[#cde3dd]"
             }`}
           >
-            <h3 className="text-2xl font-semibold mb-3">AI Stock Comparison</h3>
+            <h3 className="text-2xl font-semibold mb-3">
+              AI Stock Comparison
+            </h3>
             <p className="mb-4">
               Comparing: {comparePair[0]} vs {comparePair[1]}
             </p>
