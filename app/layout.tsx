@@ -74,6 +74,20 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               >
                 My Assets
               </Link>
+
+              {/* ✅ Added Watchlist Link */}
+              <Link
+                href="/watchlist"
+                className={`hover:underline ${
+                  pathname === '/watchlist'
+                    ? theme === 'dark'
+                      ? 'text-blue-400 font-semibold'
+                      : 'text-blue-700 font-semibold'
+                    : ''
+                }`}
+              >
+                Watchlist
+              </Link>
             </nav>
 
             {/* Right-side Buttons */}

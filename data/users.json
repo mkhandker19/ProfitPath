@@ -52,5 +52,14 @@
     "username": "test89",
     "password": "$2a$10$tAQchG5RLjRjLSOln9PurOymttlvg.H1cWydTttq3RucEvAWXmTdW",
     "createdAt": "2025-11-07T02:55:11.377Z"
+  },
+  {
+    "id": "1762748377973",
+    "firstName": "test",
+    "lastName": "test",
+    "email": "test99@gmail.com",
+    "username": "test99",
+    "password": "$2a$10$hOjJEGrGOsTmrBriHCK1sOnk8Rf6wKn/3vm2R6jx.kSoRHEPpeEaO",
+    "createdAt": "2025-11-10T04:19:37.973Z"
   }
 ]
