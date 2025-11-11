@@ -12,34 +12,132 @@ import {
 } from "recharts";
 import { fetchStockData } from "@/lib/fetchStockData";
 
+/* ───────────────── Helper UI ───────────────── */
+
+function Spinner() {
+  return (
+    <span className="inline-block h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin align-middle" />
+  );
+}
+
+/** Top-center toast that auto-dismisses in 5s (still closable) */
+function Toast({
+  kind = "info",
+  message,
+  onClose,
+}: {
+  kind?: "success" | "error" | "info";
+  message: string;
+  onClose: () => void;
+}) {
+  const color =
+    kind === "success"
+      ? "bg-green-600"
+      : kind === "error"
+      ? "bg-red-600"
+      : "bg-blue-600";
+  return (
+    <div
+      className={`${color} text-white px-5 py-3 rounded-xl shadow-lg flex items-center justify-between min-w-[300px] animate-fadeIn`}
+      role="status"
+    >
+      <span className="text-sm">{message}</span>
+      <button
+        onClick={onClose}
+        className="ml-4 opacity-80 hover:opacity-100 text-lg leading-none"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/** Collapsible long text (prevents cutoff of AI text) */
+function ExpandableText({
+  text,
+  previewChars = 380,
+  className = "",
+}: {
+  text: string;
+  previewChars?: number;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!text) return null;
+  const needsToggle = text.length > previewChars;
+  const shown = !needsToggle
+    ? text
+    : open
+    ? text
+    : text.slice(0, previewChars) + "…";
+  return (
+    <div className={`${className} leading-relaxed text-sm`}>
+      <p className="whitespace-pre-line">{shown}</p>
+      {needsToggle && (
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="mt-1 text-xs underline opacity-80 hover:opacity-100"
+        >
+          {open ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ───────────────── Page ───────────────── */
+
 export default function AssetsPage() {
   const { theme } = useTheme();
+
+  // Data
   const [assets, setAssets] = useState<any[]>([]);
   const [newAsset, setNewAsset] = useState("");
+  const [compareList, setCompareList] = useState<string[]>([]);
+  const [compareResult, setCompareResult] = useState("");
+
+  // UI state
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Range controls
   const [chartRange, setChartRange] = useState(30);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
-  const [comparePair, setComparePair] = useState<string[]>([]);
-  const [compareResult, setCompareResult] = useState("");
   const [rangeMode, setRangeMode] = useState<"preset" | "custom">("preset");
 
+  // Toasts
+  const [toasts, setToasts] = useState<
+    { id: number; kind: "success" | "error" | "info"; msg: string }[]
+  >([]);
+
+  // Keys
   const polygonKey = process.env.NEXT_PUBLIC_POLYGON_API_KEY!;
   const openAiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY!;
+
+  /* ─────────────── Toast helpers (top-center, auto-dismiss) ─────────────── */
+  const addToast = (
+    msg: string,
+    kind: "success" | "error" | "info" = "info"
+  ) => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, kind, msg }]);
+    setTimeout(() => removeToast(id), 5000);
+  };
+  const removeToast = (id: number) =>
+    setToasts((t) => t.filter((x) => x.id !== id));
 
   /* ─────────────── Load & Save Watchlist ─────────────── */
   useEffect(() => {
     const saved = localStorage.getItem("watchlist");
     if (saved) setAssets(JSON.parse(saved));
   }, []);
-
   useEffect(() => {
     localStorage.setItem("watchlist", JSON.stringify(assets));
   }, [assets]);
 
-  // Reset range mode when all assets removed
+  // Reset range when all assets removed
   useEffect(() => {
     if (assets.length === 0) {
       setRangeMode("preset");
@@ -48,43 +146,37 @@ export default function AssetsPage() {
     }
   }, [assets]);
 
-  /* ─────────────── Add Stock ─────────────── */
-  const addAsset = async () => {
-    if (!newAsset.trim()) return;
-    setError("");
-    setLoading(true);
-    const symbol = newAsset.toUpperCase();
+  /* ─────────────── Polygon helpers ─────────────── */
+  const polygonFetch = async (url: string) => {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error("Polygon error");
+    return res.json();
+  };
 
+  const validateTicker = async (symbol: string) => {
     try {
-      const data = await fetchStockData(symbol, chartRange, polygonKey);
-      if (!data) throw new Error("Invalid ticker symbol");
-
-      const aiInsight = await generateAISummary(symbol, data.name);
-      const aiRating = await getAIRating(symbol, data.name);
-      const aiNews = await summarizeNews(symbol, data.news);
-
-      setAssets((prev) => [
-        ...prev,
-        {
-          symbol,
-          name: data.name,
-          price: data.price,
-          chart: data.chart,
-          aiInsight,
-          aiRating,
-          aiNews,
-        },
-      ]);
-      setNewAsset("");
-    } catch (err) {
-      console.error(err);
-      setError("Invalid or unknown stock symbol.");
-    } finally {
-      setLoading(false);
+      const json = await polygonFetch(
+        `https://api.polygon.io/v3/reference/tickers/${symbol}?apiKey=${polygonKey}`
+      );
+      return !!json?.results?.ticker;
+    } catch {
+      return false;
     }
   };
 
-  /* ─────────────── AI Helpers ─────────────── */
+  const getPolygonPrice = async (symbol: string) => {
+    try {
+      const json = await polygonFetch(
+        `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?adjusted=true&apiKey=${polygonKey}`
+      );
+      const c = json?.results?.[0]?.c;
+      return Number.isFinite(c) ? Number(c) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  /* ─────────────── AI helpers ─────────────── */
   const generateAISummary = async (symbol: string, name: string) => {
     if (!openAiKey) return "AI summary unavailable.";
     try {
@@ -96,18 +188,19 @@ export default function AssetsPage() {
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
+          temperature: 0.2,
           messages: [
             {
               role: "system",
               content:
-                "You are a stock analyst providing concise factual market insights.",
+                "You are a concise, factual stock analyst. Return short bullets under: Trend, Drivers, Risks.",
             },
             {
               role: "user",
-              content: `Summarize ${name} (${symbol})'s ${chartRange}-day market trend, performance, and risks.`,
+              content: `Summarize ${name} (${symbol}) over the last ${chartRange} days with 2–4 bullets total.`,
             },
           ],
-          max_tokens: 120,
+          max_tokens: 160,
         }),
       });
       const data = await res.json();
@@ -117,8 +210,9 @@ export default function AssetsPage() {
     }
   };
 
+  /** Clearer, consistent recommendation phrasing (works better on AAPL/TSLA too) */
   const getAIRating = async (symbol: string, name: string) => {
-    if (!openAiKey) return "N/A";
+    if (!openAiKey) return "Recommendation: Hold — AI key missing.";
     try {
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -128,24 +222,32 @@ export default function AssetsPage() {
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
+          temperature: 0.1,
           messages: [
             {
               role: "system",
               content:
-                "You rate stocks from Strong Buy, Buy, Hold, Sell, Strong Sell.",
+                "Classify to one of: Strong Buy, Buy, Hold, Sell, Strong Sell. Output must start with 'Recommendation:' and include 1 short reason.",
             },
             {
               role: "user",
-              content: `Based on ${name} (${symbol})'s ${chartRange}-day performance and sentiment, rate it from Strong Buy → Strong Sell.`,
+              content: `Rate ${name} (${symbol}) based on ${chartRange}-day trend, volatility, and sentiment. Format: "Recommendation: <Label> — <reason>."`,
             },
           ],
-          max_tokens: 20,
+          max_tokens: 50,
         }),
       });
       const data = await res.json();
-      return data.choices?.[0]?.message?.content || "Hold";
+      const txt =
+        data.choices?.[0]?.message?.content?.trim() ||
+        "Recommendation: Hold — insufficient data.";
+      // Basic normalization safeguard
+      if (!/^Recommendation:/i.test(txt)) {
+        return `Recommendation: Hold — ${txt}`;
+      }
+      return txt;
     } catch {
-      return "Hold";
+      return "Recommendation: Hold — error fetching rating.";
     }
   };
 
@@ -161,13 +263,18 @@ export default function AssetsPage() {
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
+          temperature: 0.2,
           messages: [
             {
+              role: "system",
+              content: "Summarize in 3–4 short, factual sentences.",
+            },
+            {
               role: "user",
-              content: `Summarize these news headlines for ${symbol}: ${headlines}`,
+              content: `Summarize news for ${symbol}: ${headlines}`,
             },
           ],
-          max_tokens: 100,
+          max_tokens: 120,
         }),
       });
       const json = await ai.json();
@@ -177,38 +284,66 @@ export default function AssetsPage() {
     }
   };
 
-  /* ─────────────── Compare Two Stocks ─────────────── */
-  const compareStocks = async () => {
-    if (comparePair.length !== 2 || !openAiKey) return;
-    const [s1, s2] = comparePair;
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openAiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: `Compare ${s1} and ${s2} regarding volatility, trend, investor sentiment, and recommend which is better (Strong Buy→Strong Sell).`,
-          },
-        ],
-        max_tokens: 150,
-      }),
-    });
-    const data = await res.json();
-    setCompareResult(
-      data.choices?.[0]?.message?.content || "No comparison result."
-    );
+  /* ─────────────── Add asset ─────────────── */
+  const addAsset = async () => {
+    const symbol = newAsset.trim().toUpperCase();
+    if (!symbol) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      // Validate first (so we can show “stock doesn’t exist”)
+      const valid = await validateTicker(symbol);
+      if (!valid) {
+        addToast("Stock doesn’t exist.", "error");
+        setError("Invalid or unknown stock symbol.");
+        return;
+      }
+
+      // Pull main data (name, chart, etc.)
+      const data = await fetchStockData(symbol, chartRange, polygonKey);
+      if (!data) {
+        addToast("Could not load stock.", "error");
+        setError("Failed to load stock data.");
+        return;
+      }
+
+      // Fix NaN: normalize price
+      let price: number | undefined =
+        typeof data.price === "number" ? data.price : undefined;
+      if (!Number.isFinite(price)) {
+        price = await getPolygonPrice(symbol);
+      }
+
+      const aiInsight = await generateAISummary(symbol, data.name ?? symbol);
+      const aiRating = await getAIRating(symbol, data.name ?? symbol);
+      const aiNews = await summarizeNews(symbol, data.news);
+
+      setAssets((prev) => [
+        ...prev,
+        {
+          symbol,
+          name: data.name ?? symbol,
+          price,
+          chart: data.chart,
+          aiInsight,
+          aiRating,
+          aiNews,
+        },
+      ]);
+      setNewAsset("");
+      addToast(`Added ${symbol} to your dashboard.`, "success");
+    } catch (e) {
+      console.error(e);
+      addToast("Unexpected error adding stock.", "error");
+      setError("Unexpected error adding stock.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  /* ─────────────── Actions ─────────────── */
-  const removeAsset = (symbol: string) => {
-    setAssets((prev) => prev.filter((a) => a.symbol !== symbol));
-  };
-
+  /* ─────────────── Refresh all ─────────────── */
   const refreshAll = async () => {
     setRefreshing(true);
     try {
@@ -216,13 +351,24 @@ export default function AssetsPage() {
         assets.map(async (a) => {
           const data = await fetchStockData(a.symbol, chartRange, polygonKey);
           if (!data) return a;
-          const aiInsight = await generateAISummary(a.symbol, data.name);
-          const aiRating = await getAIRating(a.symbol, data.name);
+
+          let price: number | undefined =
+            typeof data.price === "number" ? data.price : undefined;
+          if (!Number.isFinite(price)) {
+            price = await getPolygonPrice(a.symbol);
+          }
+
+          const aiInsight = await generateAISummary(
+            a.symbol,
+            data.name ?? a.symbol
+          );
+          const aiRating = await getAIRating(a.symbol, data.name ?? a.symbol);
           const aiNews = await summarizeNews(a.symbol, data.news);
+
           return {
             symbol: a.symbol,
-            name: data.name,
-            price: data.price,
+            name: data.name ?? a.symbol,
+            price,
             chart: data.chart,
             aiInsight,
             aiRating,
@@ -231,14 +377,59 @@ export default function AssetsPage() {
         })
       );
       setAssets(updated);
+      addToast("All assets refreshed.", "success");
     } catch {
-      setError("Error refreshing data.");
+      addToast("Error refreshing data.", "error");
     } finally {
       setRefreshing(false);
     }
   };
 
-  /* ─────────────── Render ─────────────── */
+  /* ─────────────── Remove asset ─────────────── */
+  const removeAsset = (symbol: string) => {
+    setAssets((prev) => prev.filter((a) => a.symbol !== symbol));
+    // Also remove from comparison list (fixes lingering compare box)
+    setCompareList((prev) => prev.filter((s) => s !== symbol));
+  };
+
+  /* ─────────────── Compare multi (2+) ─────────────── */
+  const compareStocks = async () => {
+    if (compareList.length < 2 || !openAiKey) return;
+    setCompareResult("Running comparison…");
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Compare multiple tickers in 3 tight bullets and end with a best→worst ranking.",
+            },
+            {
+              role: "user",
+              content: `Compare ${compareList.join(", ")} by recent performance, volatility, valuation feel, notable news, and give a final ranked pick.`,
+            },
+          ],
+          max_tokens: 280,
+        }),
+      });
+      const data = await res.json();
+      setCompareResult(
+        data.choices?.[0]?.message?.content || "No comparison result."
+      );
+    } catch {
+      setCompareResult("Error running comparison.");
+    }
+  };
+
+  /* ─────────────── UI ─────────────── */
   return (
     <main
       className={`min-h-screen px-8 py-20 transition-colors duration-500 ${
@@ -247,14 +438,26 @@ export default function AssetsPage() {
           : "bg-gradient-to-b from-[#f5f7fa] via-[#c3e0dc] to-[#9ad0c2] text-gray-900"
       }`}
     >
+      {/* Toasts: top-center */}
+      <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 space-y-2">
+        {toasts.map((t) => (
+          <Toast
+            key={t.id}
+            kind={t.kind}
+            message={t.msg}
+            onClose={() => removeToast(t.id)}
+          />
+        ))}
+      </div>
+
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">
           My Assets Dashboard (AI-Enhanced)
         </h1>
 
-        {/* Add + Controls */}
+        {/* Add + Range Controls */}
         <div className="flex flex-wrap gap-3 mb-8 items-center">
-          {/* Stock Input + Add Button */}
+          {/* Input + Add */}
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -270,17 +473,18 @@ export default function AssetsPage() {
             <button
               onClick={addAsset}
               disabled={loading}
-              className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all ${
+              className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all flex items-center gap-2 ${
                 theme === "dark"
                   ? "bg-blue-600 hover:bg-blue-700"
-                  : "bg-blue-400 hover:bg-blue-500 text-white"
+                  : "bg-blue-500 hover:bg-blue-600 text-white"
               }`}
             >
-              {loading ? "Adding..." : "Add"}
+              {loading ? <Spinner /> : null}
+              <span>{loading ? "Adding…" : "Add"}</span>
             </button>
           </div>
 
-          {/* Range Selector */}
+          {/* Range selector (7/30/90) */}
           <div className="flex flex-wrap gap-2 items-center">
             <label className="text-sm font-medium">Range Mode:</label>
             <select
@@ -305,42 +509,42 @@ export default function AssetsPage() {
 
             <span className="text-sm font-medium">or</span>
 
-            {/* Custom Range */}
-<div className="flex gap-2 items-center">
-  <input
-    type="date"
-    value={customFrom}
-    onChange={(e) => {
-      const val = e.target.value;
-      setCustomFrom(val);
-      if (val && customTo) setRangeMode("custom");
-      else setRangeMode("preset");
-    }}
-    className={`px-3 py-2 rounded-lg border ${
-      theme === "dark"
-        ? "bg-gray-800 border-gray-700 text-white"
-        : "bg-white border-gray-300 text-black"
-    }`}
-  />
-  <span>→</span>
-  <input
-    type="date"
-    value={customTo}
-    onChange={(e) => {
-      const val = e.target.value;
-      setCustomTo(val);
-      if (customFrom && val) setRangeMode("custom");
-      else setRangeMode("preset");
-    }}
-    className={`px-3 py-2 rounded-lg border ${
-      theme === "dark"
-        ? "bg-gray-800 border-gray-700 text-white"
-        : "bg-white border-gray-300 text-black"
-    }`}
-  />
-</div>
+            {/* Custom range */}
+            <div className="flex gap-2 items-center">
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomFrom(val);
+                  if (val && customTo) setRangeMode("custom");
+                  else setRangeMode("preset");
+                }}
+                className={`px-3 py-2 rounded-lg border ${
+                  theme === "dark"
+                    ? "bg-gray-800 border-gray-700 text-white"
+                    : "bg-white border-gray-300 text-black"
+                }`}
+              />
+              <span>→</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCustomTo(val);
+                  if (customFrom && val) setRangeMode("custom");
+                  else setRangeMode("preset");
+                }}
+                className={`px-3 py-2 rounded-lg border ${
+                  theme === "dark"
+                    ? "bg-gray-800 border-gray-700 text-white"
+                    : "bg-white border-gray-300 text-black"
+                }`}
+              />
+            </div>
 
-            {/* Mode Indicator */}
+            {/* Mode indicator */}
             <span
               className={`ml-3 text-sm px-3 py-1 rounded-full ${
                 rangeMode === "custom"
@@ -361,16 +565,18 @@ export default function AssetsPage() {
           <button
             onClick={refreshAll}
             disabled={refreshing || assets.length === 0}
-            className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all ${
+            className={`px-4 py-2 rounded-lg disabled:opacity-50 transition-all flex items-center gap-2 ${
               theme === "dark"
                 ? "bg-green-600 hover:bg-green-700"
-                : "bg-green-400 hover:bg-green-500 text-white"
+                : "bg-green-500 hover:bg-green-600 text-white"
             }`}
           >
-            {refreshing ? "Refreshing..." : "Refresh All"}
+            {refreshing ? <Spinner /> : null}
+            <span>{refreshing ? "Refreshing…" : "Refresh All"}</span>
           </button>
         </div>
 
+        {/* Error banner (also using toast already) */}
         {error && <p className="text-red-500 mb-4">{error}</p>}
 
         {/* Watchlist */}
@@ -381,23 +587,34 @@ export default function AssetsPage() {
             {assets.map((a) => (
               <div
                 key={a.symbol}
-                className={`p-5 rounded-xl border shadow-md flex flex-col transition-colors ${
+                className={`p-5 rounded-xl border shadow-md flex flex-col transition-transform transform hover:-translate-y-1 ${
                   theme === "dark"
                     ? "bg-gray-800 border-gray-700"
                     : "bg-[#eaf5f3] border-[#cde3dd]"
                 }`}
               >
-                <div className="flex justify-between items-center mb-2">
-                  <h2 className="text-xl font-semibold">
-                    {a.name} ({a.symbol})
-                  </h2>
+                {/* Header */}
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      {a.name} <span className="opacity-70">({a.symbol})</span>
+                    </h2>
+                    <div className="text-xs opacity-75">
+                      {rangeMode === "custom" && customFrom && customTo
+                        ? `Custom: ${customFrom} → ${customTo}`
+                        : `Preset: Last ${chartRange} days`}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-3">
-                    <p className="text-green-500 font-medium">
-                      ${a.price?.toFixed?.(2) || a.price}
+                    <p className="text-green-500 font-semibold">
+                      {Number.isFinite(Number(a.price))
+                        ? `$${Number(a.price).toFixed(2)}`
+                        : "$N/A"}
                     </p>
                     <button
                       onClick={() => removeAsset(a.symbol)}
                       className="text-red-500 hover:text-red-700 text-lg"
+                      title="Remove"
                     >
                       ✕
                     </button>
@@ -406,29 +623,16 @@ export default function AssetsPage() {
 
                 {/* Chart */}
                 {a.chart?.length > 0 && (
-                  <div className="h-40 w-full my-3">
+                  <div className="h-40 w-full mb-4">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={a.chart}>
                         <XAxis
                           dataKey="date"
-                          tick={{
-                            fill: theme === "dark" ? "#ccc" : "#333",
-                            fontSize: 10,
-                          }}
+                          tick={{ fill: theme === "dark" ? "#ccc" : "#333" }}
                         />
-                        {(() => {
-                          const prices = a.chart.map((d: any) => d.price);
-                          const minPrice = Math.min(...prices);
-                          const maxPrice = Math.max(...prices);
-                          return (
-                            <YAxis
-                              domain={[minPrice * 0.98, maxPrice * 1.02]}
-                              tick={{
-                                fill: theme === "dark" ? "#ccc" : "#333",
-                              }}
-                            />
-                          );
-                        })()}
+                        <YAxis
+                          tick={{ fill: theme === "dark" ? "#ccc" : "#333" }}
+                        />
                         <Tooltip
                           contentStyle={{
                             backgroundColor:
@@ -449,27 +653,43 @@ export default function AssetsPage() {
                   </div>
                 )}
 
-                {/* AI Info */}
-                <p className="text-sm mb-2">{a.aiInsight}</p>
-                <p className="text-xs mb-1 italic">
-                  Recommendation: {a.aiRating}
-                </p>
-                <p className="text-sm mb-2">
-                  <strong>AI News Summary:</strong> {a.aiNews}
-                </p>
+                {/* AI sections (clearer headings) */}
+                <div className="space-y-2">
+                  <div>
+                    <div className="text-xs font-semibold opacity-80 mb-1">
+                      AI Insight
+                    </div>
+                    <ExpandableText text={a.aiInsight} />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold opacity-80 mb-1">
+                      Recommendation
+                    </div>
+                    <p className="italic text-sm">
+                      {a.aiRating || "Recommendation: Hold — no data."}
+                    </p>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold opacity-80 mb-1">
+                      AI News Summary
+                    </div>
+                    <ExpandableText text={a.aiNews} />
+                  </div>
+                </div>
 
-                {/* Comparison selector */}
-                <label className="flex items-center gap-2 text-sm mt-auto">
+                {/* Compare checkbox */}
+                <label className="flex items-center gap-2 text-sm mt-4">
                   <input
                     type="checkbox"
-                    checked={comparePair.includes(a.symbol)}
+                    checked={compareList.includes(a.symbol)}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        if (comparePair.length < 2)
-                          setComparePair([...comparePair, a.symbol]);
+                        setCompareList((prev) =>
+                          prev.includes(a.symbol) ? prev : [...prev, a.symbol]
+                        );
                       } else {
-                        setComparePair(
-                          comparePair.filter((s) => s !== a.symbol)
+                        setCompareList((prev) =>
+                          prev.filter((s) => s !== a.symbol)
                         );
                       }
                     }}
@@ -481,10 +701,10 @@ export default function AssetsPage() {
           </div>
         )}
 
-        {/* Comparison */}
-        {comparePair.length === 2 && (
+        {/* Comparison (supports unlimited; show when >=2) */}
+        {compareList.length >= 2 && (
           <div
-            className={`mt-10 p-5 rounded-xl border transition-colors ${
+            className={`mt-10 p-5 rounded-xl border shadow-md transition-colors ${
               theme === "dark"
                 ? "bg-gray-900 border-gray-700"
                 : "bg-[#eaf5f3] border-[#cde3dd]"
@@ -493,21 +713,36 @@ export default function AssetsPage() {
             <h3 className="text-2xl font-semibold mb-3">
               AI Stock Comparison
             </h3>
-            <p className="mb-4">
-              Comparing: {comparePair[0]} vs {comparePair[1]}
+            <p className="mb-3 text-sm">
+              Comparing:{" "}
+              <span className="font-mono">{compareList.join(", ")}</span>
             </p>
-            <button
-              onClick={compareStocks}
-              className={`px-4 py-2 rounded-lg transition-all ${
-                theme === "dark"
-                  ? "bg-blue-600 hover:bg-blue-700"
-                  : "bg-blue-400 hover:bg-blue-500 text-white"
-              }`}
-            >
-              Run Comparison
-            </button>
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={compareStocks}
+                className={`px-4 py-2 rounded-lg transition-all ${
+                  theme === "dark"
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "bg-blue-500 hover:bg-blue-600 text-white"
+                }`}
+              >
+                Run Comparison
+              </button>
+              <button
+                onClick={() => setCompareList([])}
+                className={`px-4 py-2 rounded-lg transition-all ${
+                  theme === "dark"
+                    ? "bg-gray-700 hover:bg-gray-600"
+                    : "bg-gray-300 hover:bg-gray-400 text-black"
+                }`}
+              >
+                Clear Selection
+              </button>
+            </div>
             {compareResult && (
-              <p className="mt-4 whitespace-pre-line">{compareResult}</p>
+              <div className="mt-4">
+                <ExpandableText text={compareResult} previewChars={800} />
+              </div>
             )}
           </div>
         )}
