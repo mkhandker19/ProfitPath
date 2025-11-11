@@ -12,6 +12,8 @@ export default function WatchlistPage() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+
+  // ✅ Use your Polygon key from .env
   const polygonKey = process.env.NEXT_PUBLIC_POLYGON_API_KEY!;
 
   /* ─────────────── Load Saved Watchlist ─────────────── */
@@ -62,7 +64,7 @@ export default function WatchlistPage() {
     setError("");
     setLoading(true);
     try {
-      // Quick validation using fetchStockSummary
+      // ✅ Quick validation via Polygon API
       const check = await fetchStockSummary([symbol], polygonKey);
       if (check.length === 0) throw new Error("Invalid ticker.");
       setTickers((prev) => [...prev, symbol]);
