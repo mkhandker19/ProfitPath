@@ -21,7 +21,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const confirmLogout = () => {
-    // clear stored data
     localStorage.clear();
     setShowLogoutModal(false);
     router.push("/");
@@ -75,7 +74,6 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                 My Assets
               </Link>
 
-              {/* ✅ Added Watchlist Link */}
               <Link
                 href="/watchlist"
                 className={`hover:underline ${
@@ -87,6 +85,20 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 Watchlist
+              </Link>
+
+              {/* 🧠 Deep Research Page */}
+              <Link
+                href="/deep-research"
+                className={`hover:underline ${
+                  pathname === '/deep-research'
+                    ? theme === 'dark'
+                      ? 'text-blue-400 font-semibold'
+                      : 'text-blue-700 font-semibold'
+                    : ''
+                }`}
+              >
+                Deep Research
               </Link>
             </nav>
 
