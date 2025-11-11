@@ -631,8 +631,16 @@ export default function AssetsPage() {
                           tick={{ fill: theme === "dark" ? "#ccc" : "#333" }}
                         />
                         <YAxis
-                          tick={{ fill: theme === "dark" ? "#ccc" : "#333" }}
-                        />
+  domain={[
+    (dataMin: number) => dataMin * 0.98,
+    (dataMax: number) => dataMax * 1.02,
+  ]}
+  tick={{
+    fill: theme === "dark" ? "#ccc" : "#333",
+    fontSize: 10,
+  }}
+/>
+
                         <Tooltip
                           contentStyle={{
                             backgroundColor:
@@ -647,6 +655,7 @@ export default function AssetsPage() {
                           stroke={theme === "dark" ? "#3b82f6" : "#2563eb"}
                           strokeWidth={2}
                           dot={false}
+                          isAnimationActive={true}
                         />
                       </LineChart>
                     </ResponsiveContainer>
