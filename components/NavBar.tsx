@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useState } from 'react'
+import ThemeSwitcher from './ThemeSwitcher'
 
 type Props = {
   variant?: 'landing' | 'app' // landing = Login only; app = Home/My Assets/Logout
@@ -52,25 +53,46 @@ export default function NavBar({ variant = 'landing' }: Props) {
             >
               My Assets
             </Link>
+            <Link
+              href="/search"
+              className={[
+                'px-3 py-1.5 rounded-xl text-sm transition-colors',
+                isActive('/search') ? 'bg-white/15' : 'hover:bg-white/10'
+              ].join(' ')}
+            >
+              Search
+            </Link>
+            <Link
+              href="/ai"
+              className={[
+                'px-3 py-1.5 rounded-xl text-sm transition-colors',
+                isActive('/ai') ? 'bg-white/15' : 'hover:bg-white/10'
+              ].join(' ')}
+            >
+              AI
+            </Link>
           </div>
         ) : (
           <span /> /* spacer */
         )}
 
         {/* RIGHT SIDE AUTH */}
-        {variant === 'app' ? (
-          <button
-            onClick={logout}
-            disabled={loggingOut}
-            className="px-3 py-1.5 rounded-xl text-sm bg-white/10 border border-white/10 hover:bg-white/20 disabled:opacity-50"
-          >
-            {loggingOut ? 'Logging out…' : 'Logout'}
-          </button>
-        ) : (
-          <Link href="/login" className="px-3 py-1.5 rounded-xl text-sm hover:bg-white/10">
-            Login
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <ThemeSwitcher />
+          {variant === 'app' ? (
+            <button
+              onClick={logout}
+              disabled={loggingOut}
+              className="px-3 py-1.5 rounded-xl text-sm bg-white/10 border border-white/10 hover:bg-white/20 disabled:opacity-50"
+            >
+              {loggingOut ? 'Logging out…' : 'Logout'}
+            </button>
+          ) : (
+            <Link href="/login" className="px-3 py-1.5 rounded-xl text-sm hover:bg-white/10">
+              Login
+            </Link>
+          )}
+        </div>
       </nav>
     </header>
   )

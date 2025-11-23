@@ -1,65 +1,94 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { verifyAuth } from '@/lib/auth'
-import fs from 'fs/promises'
+import { NextResponse } from 'next/server'
+import { promises as fs } from 'fs'
 import path from 'path'
+import { cookies } from 'next/headers'
+import * as jose from 'jose'
 
-const STORE = path.join(process.cwd(), 'data', 'favorites.json')
+export const runtime = 'nodejs'
 
-async function readStore(): Promise<Record<string, string[]>> {
+const usersPath = path.join(process.cwd(), 'data', 'users.json')
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'your-fallback-secret-here')
+
+async function loadUsers(): Promise<any[]> {
   try {
-    const raw = await fs.readFile(STORE, 'utf8')
-    return JSON.parse(raw || '{}')
-  } catch {
-    return {}
+    const data = await fs.readFile(usersPath, 'utf-8');
+    return JSON.parse(data);
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return [];
+    }
+    console.error('Error reading users.json:', error);
+    return [];
   }
 }
 
-async function writeStore(data: Record<string, string[]>) {
-  await fs.mkdir(path.dirname(STORE), { recursive: true })
-  await fs.writeFile(STORE, JSON.stringify(data, null, 2), 'utf8')
+async function saveUsers(users: any[]) {
+  await fs.mkdir(path.dirname(usersPath), { recursive: true });
+  await fs.writeFile(usersPath, JSON.stringify(users, null, 2));
+}
+
+async function getUserIdFromCookie() {
+  const cookie = cookies().get('auth_token')
+  if (!cookie) return null
+  try {
+    const { payload } = await jose.jwtVerify(cookie.value, secret)
+    return payload.sub
+  } catch (e) {
+    return null
+  }
 }
 
 export async function GET() {
-  const user = await verifyAuth()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const userId = await getUserIdFromCookie()
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const db = await readStore()
-  const list = db[user.email] || []
-  return NextResponse.json({ tickers: list })
+  const users = await loadUsers()
+  const user = users.find(u => u.id === userId)
+
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+  return NextResponse.json({ assets: user.assets || [] })
 }
 
-export async function POST(req: NextRequest) {
-  const user = await verifyAuth()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function POST(req: Request) {
+  const userId = await getUserIdFromCookie()
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({}))
-  let ticker: string = (body?.ticker || '').toUpperCase().trim()
+  const { symbol } = await req.json()
+  if (!symbol) return NextResponse.json({ error: 'Symbol is required' }, { status: 400 })
 
-  if (!/^[A-Z.\-]{1,10}$/.test(ticker)) {
-    return NextResponse.json({ error: 'Invalid ticker' }, { status: 400 })
+  const users = await loadUsers()
+  const user = users.find(u => u.id === userId)
+
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+  if (!user.assets) user.assets = []
+  if (!user.assets.includes(symbol)) {
+    user.assets.push(symbol)
   }
 
-  const db = await readStore()
-  const current = new Set((db[user.email] || []).map(t => t.toUpperCase()))
-  current.add(ticker)
-  db[user.email] = Array.from(current).slice(0, 50) // simple cap
-
-  await writeStore(db)
-  return NextResponse.json({ ok: true, tickers: db[user.email] })
+  await saveUsers(users)
+  return NextResponse.json({ message: 'Asset added' })
 }
 
-export async function DELETE(req: NextRequest) {
-  const user = await verifyAuth()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function DELETE(req: Request) {
+    const userId = await getUserIdFromCookie()
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { searchParams } = new URL(req.url)
-  const ticker = (searchParams.get('ticker') || '').toUpperCase().trim()
-  if (!ticker) return NextResponse.json({ error: 'Missing ticker' }, { status: 400 })
+    const { searchParams } = new URL(req.url)
+    const symbol = searchParams.get('symbol')
 
-  const db = await readStore()
-  const list = (db[user.email] || []).filter(t => t.toUpperCase() !== ticker)
-  db[user.email] = list
-  await writeStore(db)
+    if (!symbol) return NextResponse.json({ error: 'Symbol is required' }, { status: 400 })
 
-  return NextResponse.json({ ok: true, tickers: list })
-}
+    const users = await loadUsers()
+    const user = users.find(u => u.id === userId)
+
+    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+
+    if (user.assets) {
+      user.assets = user.assets.filter((s: string) => s !== symbol)
+    }
+
+    await saveUsers(users)
+    return NextResponse.json({ message: 'Asset removed' })
+  }
